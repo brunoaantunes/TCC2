@@ -87,12 +87,13 @@ __interrupt void epwm2_isr(void);
 __interrupt void epwm6_isr(void);
 __interrupt void epwm7_isr(void);
 __interrupt void epwm8_isr(void);
+__interrupt void cpu_timer0_isr(void);
 
-void BootstrapPwm6(void);
-void BootstrapPwm7(void);
-void BootstrapPwm8(void);
+//void BootstrapPwm6(void);
+//void BootstrapPwm7(void);
+//void BootstrapPwm8(void);
 
-Uint64 count;
+Uint16 count=0;
 
 //void InitEPwmGpio_DB(void);
 //
@@ -169,23 +170,31 @@ void main(void)
     PieVectTable.EPWM6_INT = &epwm6_isr;
     PieVectTable.EPWM7_INT = &epwm7_isr;
     PieVectTable.EPWM8_INT = &epwm8_isr;
+    PieVectTable.TIMER0_INT = &cpu_timer0_isr;
 
     EDIS;   // This is needed to disable write to EALLOW protected registers
+ //-------------------------------
+    InitCpuTimers();
+    ConfigCpuTimer(&CpuTimer0, 60, 500000);
 
+
+    CpuTimer0Regs.TCR.all = 0x4001;
+
+ //
+ // Step 5. User specific code, enable __interrupts:
+ // Configure GPIO34 as a GPIO output pin
+ //
+    /*EALLOW;
+    GpioCtrlRegs.GPADIR.bit.GPIO12 = 1; // LED D9
+    GpioCtrlRegs.GPADIR.bit.GPIO13 = 1; // LED D10
+    // Set LED data
+    GpioDataRegs.GPADAT.bit.GPIO12 = 1; // LED D9
+    GpioDataRegs.GPADAT.bit.GPIO13 = 1; // LED D10
+    EDIS;*/
+  //-------------------------------
     EALLOW;
     CpuSysRegs.PCLKCR0.bit.TBCLKSYNC =0;
     EDIS;
-    count = 0;
-
-    while(count<600000){
-        count++;
-
-        if(count<600000){
-            BootstrapPwm6();
-            BootstrapPwm7();
-            BootstrapPwm8();
-        }
-    }
 
 
     InitEPwm1Example();
@@ -193,6 +202,7 @@ void main(void)
     InitEPwm6Example();
     InitEPwm7Example();
     InitEPwm8Example();
+
 
     EALLOW;
     CpuSysRegs.PCLKCR0.bit.TBCLKSYNC =1;
@@ -204,10 +214,11 @@ void main(void)
     ClkCfgRegs.PERCLKDIVSEL.bit.EPWMCLKDIV  = 0x0001; //ADICIONADO
     EDIS;
 
-
+        IER |= M_INT1;
         IER |= M_INT6;
         IER |= M_INT7;
 
+        PieCtrlRegs.PIEIER1.bit.INTx7 = 1;
         PieCtrlRegs.PIEIER2.bit.INTx1 = 1;
         PieCtrlRegs.PIEIER2.bit.INTx2 = 1;
         PieCtrlRegs.PIEIER2.bit.INTx6 = 1;
@@ -217,11 +228,21 @@ void main(void)
         EINT;
         ERTM;
 
-//  - IDLE loop. Just loop forever
-// ***************************************************************************
-                //for(;;);  //infinite loop
+        for(;;){
+               asm ("          NOP");
+           }
 
 } // END MAIN
+
+__interrupt void cpu_timer0_isr(void)
+{
+   CpuTimer0.InterruptCount++;
+   //GpioDataRegs.GPATOGGLE.bit.GPIO12 = 1; // LED D9
+   //GpioDataRegs.GPATOGGLE.bit.GPIO13 = 1; // LED D10
+   count= count+1;
+
+   //PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}
 
 // epwm1_isr - EPWM1 ISR
 __interrupt void epwm1_isr(void)
@@ -396,6 +417,15 @@ void InitEPwm6Example()
     EPwm6Regs.TBCTL.bit.PHSDIR = 1;
     EPwm6Regs.TBCTR = 0x0000;                     // Clear counter
 
+    if(count<5){  //2 segundos
+        // Setup compare
+        EPwm6Regs.CMPA.bit.CMPA =5000 ;
+    }
+    else{
+        // Setup compare
+        EPwm6Regs.CMPA.bit.CMPA =2500 ;
+    }
+
     //
     // Setup TBCLK
     //
@@ -411,9 +441,6 @@ void InitEPwm6Example()
     EPwm6Regs.CMPCTL.bit.SHDWBMODE = CC_SHADOW;
     EPwm6Regs.CMPCTL.bit.LOADAMODE = CC_CTR_ZERO;
     EPwm6Regs.CMPCTL.bit.LOADBMODE = CC_CTR_ZERO;
-
-    // Setup compare
-    EPwm6Regs.CMPA.bit.CMPA =2500 ;
 
     //
     // Set actions
@@ -445,9 +472,20 @@ void InitEPwm6Example()
 void InitEPwm7Example()
 {
     EPwm7Regs.TBPRD = 5000;                 // Set timer period
-    EPwm7Regs.TBPHS.bit.TBPHS = 10000/3;           // Phase
     EPwm7Regs.TBCTL.bit.PHSDIR = 0;
     EPwm7Regs.TBCTR = 0x0000;                     // Clear counter
+
+
+    if(count<5){  //2 segundos
+        // Setup compare
+        EPwm7Regs.CMPA.bit.CMPA =5000 ;
+        EPwm7Regs.TBPHS.bit.TBPHS = 0;           // Phase
+    }
+    else{
+        // Setup compare
+        EPwm7Regs.CMPA.bit.CMPA =2500 ;
+        EPwm7Regs.TBPHS.bit.TBPHS = 10000/3;           // Phase
+    }
 
     //
     // Setup TBCLK
@@ -464,9 +502,6 @@ void InitEPwm7Example()
     EPwm7Regs.CMPCTL.bit.SHDWBMODE = CC_SHADOW;
     EPwm7Regs.CMPCTL.bit.LOADAMODE = CC_CTR_ZERO;
     EPwm7Regs.CMPCTL.bit.LOADBMODE = CC_CTR_ZERO;
-
-    // Setup compare
-    EPwm7Regs.CMPA.bit.CMPA = 2500;
 
     //
     // Set actions
@@ -498,9 +533,19 @@ void InitEPwm7Example()
 void InitEPwm8Example()
 {
     EPwm8Regs.TBPRD = 5000;                 // Set timer period
-    EPwm8Regs.TBPHS.bit.TBPHS = (2*10000)/3;           // Phase
     EPwm8Regs.TBCTL.bit.PHSDIR = 0;
     EPwm8Regs.TBCTR = 0x0000;                     // Clear counter
+
+    if(count<5){  //2 segundos
+        // Setup compare
+        EPwm8Regs.CMPA.bit.CMPA =5000 ;
+        EPwm8Regs.TBPHS.bit.TBPHS = 0;           // Phase
+    }
+    else{
+        // Setup compare
+        EPwm8Regs.CMPA.bit.CMPA =2500 ;
+        EPwm8Regs.TBPHS.bit.TBPHS = (2*10000)/3;           // Phase
+    }
 
     //
     // Setup TBCLK
@@ -517,9 +562,6 @@ void InitEPwm8Example()
     EPwm8Regs.CMPCTL.bit.SHDWBMODE = CC_SHADOW;
     EPwm8Regs.CMPCTL.bit.LOADAMODE = CC_CTR_ZERO;
     EPwm8Regs.CMPCTL.bit.LOADBMODE = CC_CTR_ZERO;
-
-    // Setup compare
-    EPwm8Regs.CMPA.bit.CMPA = 2500;
 
     //
     // Set actions
@@ -548,6 +590,7 @@ void InitEPwm8Example()
     EPwm8Regs.ETPS.bit.INTPRD = ET_1ST; //ET_3RD;          // Generate INT on 3rd event
 }
 
+/*
 //----------configurações do bootstrap------------------------------------------------------
 
 void BootstrapPwm6(){
