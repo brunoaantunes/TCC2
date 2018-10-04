@@ -89,11 +89,15 @@ __interrupt void epwm7_isr(void);
 __interrupt void epwm8_isr(void);
 __interrupt void cpu_timer0_isr(void);
 
+
+void ConfigureADC(void);
+void SetupADCSoftware(void);
+void contador(void);
 //void BootstrapPwm6(void);
 //void BootstrapPwm7(void);
 //void BootstrapPwm8(void);
 
-Uint16 count=0;
+Uint16 count = 0;
 
 //void InitEPwmGpio_DB(void);
 //
@@ -101,6 +105,7 @@ Uint16 count=0;
 //
 void main(void)
 {
+
 //
 // Step 1. Initialize System Control:
 // PLL, WatchDog, enable Peripheral Clocks
@@ -174,28 +179,28 @@ void main(void)
 
     EDIS;   // This is needed to disable write to EALLOW protected registers
  //-------------------------------
+   // if(count<5){
     InitCpuTimers();
     ConfigCpuTimer(&CpuTimer0, 60, 500000);
-
-
     CpuTimer0Regs.TCR.all = 0x4001;
-
+    //}
  //
  // Step 5. User specific code, enable __interrupts:
  // Configure GPIO34 as a GPIO output pin
  //
-    /*EALLOW;
+    EALLOW;
     GpioCtrlRegs.GPADIR.bit.GPIO12 = 1; // LED D9
     GpioCtrlRegs.GPADIR.bit.GPIO13 = 1; // LED D10
     // Set LED data
     GpioDataRegs.GPADAT.bit.GPIO12 = 1; // LED D9
     GpioDataRegs.GPADAT.bit.GPIO13 = 1; // LED D10
-    EDIS;*/
+    EDIS;
+
+
   //-------------------------------
     EALLOW;
     CpuSysRegs.PCLKCR0.bit.TBCLKSYNC =0;
     EDIS;
-
 
     InitEPwm1Example();
     InitEPwm2Example();
@@ -203,17 +208,16 @@ void main(void)
     InitEPwm7Example();
     InitEPwm8Example();
 
-
     EALLOW;
     CpuSysRegs.PCLKCR0.bit.TBCLKSYNC =1;
     EDIS;
 
 
-
+/*
     EALLOW;
     ClkCfgRegs.PERCLKDIVSEL.bit.EPWMCLKDIV  = 0x0001; //ADICIONADO
     EDIS;
-
+*/
         IER |= M_INT1;
         IER |= M_INT6;
         IER |= M_INT7;
@@ -228,20 +232,68 @@ void main(void)
         EINT;
         ERTM;
 
-        for(;;){
-               asm ("          NOP");
-           }
+
+        //Configure the ADCs and power them up
+         ConfigureADC();
+        //Setup the ADCs for software conversions
+         SetupADCSoftware();
+
+        for(;;);
+
 
 } // END MAIN
 
 __interrupt void cpu_timer0_isr(void)
 {
-   CpuTimer0.InterruptCount++;
-   //GpioDataRegs.GPATOGGLE.bit.GPIO12 = 1; // LED D9
-   //GpioDataRegs.GPATOGGLE.bit.GPIO13 = 1; // LED D10
-   count= count+1;
 
-   //PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+   CpuTimer0.InterruptCount++;
+   GpioDataRegs.GPATOGGLE.bit.GPIO12 = 1; // LED D9
+   GpioDataRegs.GPATOGGLE.bit.GPIO13 = 1; // LED D10
+
+  //contador();
+
+   //convert, wait for completion, and store results
+   //start conversions immediately via software, ADCA
+   //
+   AdcaRegs.ADCSOCFRC1.all = 0x0007; //SOC0, SOC1 and SOC2
+
+   //
+   //start conversions immediately via software, ADCB
+   //
+   AdcbRegs.ADCSOCFRC1.all = 0x0007; //SOC0, SOC1 and SOC2
+
+   //
+   //wait for ADCA to complete, then acknowledge flag
+   //
+   while(AdcaRegs.ADCINTFLG.bit.ADCINT1 == 0);
+   AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;
+
+   //
+   //wait for ADCB to complete, then acknowledge flag
+   //
+   while(AdcbRegs.ADCINTFLG.bit.ADCINT1 == 0);
+   AdcbRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;
+
+   count++;
+
+   if(count<50){
+       EPwm6Regs.CMPA.bit.CMPA = 5000;
+       EPwm7Regs.CMPA.bit.CMPA = 5000;
+       EPwm8Regs.CMPA.bit.CMPA = 5000;
+   }
+   else
+   {
+       EPwm6Regs.CMPA.bit.CMPA = 2500;
+       EPwm7Regs.CMPA.bit.CMPA = 2500;
+       EPwm8Regs.CMPA.bit.CMPA = 2500;
+   }
+
+
+   PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}
+
+void contador(void){
+    count++;
 }
 
 // epwm1_isr - EPWM1 ISR
@@ -269,6 +321,7 @@ __interrupt void epwm2_isr(void)
 __interrupt void epwm6_isr(void)
 {
 
+
     // Clear INT flag for this timer
     EPwm6Regs.ETCLR.bit.INT = 1;
 
@@ -279,6 +332,7 @@ __interrupt void epwm6_isr(void)
 // epwm7_isr - EPWM7 ISR
 __interrupt void epwm7_isr(void)
 {
+
     // Clear INT flag for this timer
     EPwm7Regs.ETCLR.bit.INT = 1;
 
@@ -289,6 +343,7 @@ __interrupt void epwm7_isr(void)
 // epwm8_isr - EPWM8 ISR
 __interrupt void epwm8_isr(void)
 {
+
     // Clear INT flag for this timer
     EPwm8Regs.ETCLR.bit.INT = 1;
 
@@ -358,7 +413,7 @@ void InitEPwm1Example()
 void InitEPwm2Example()
 {
     EPwm2Regs.TBPRD = 5000;                // Set timer period
-    EPwm2Regs.TBPHS.bit.TBPHS = 5000/3;           // Phase
+    EPwm2Regs.TBPHS.bit.TBPHS = 0;           // Phase
     EPwm2Regs.TBCTL.bit.PHSDIR = 0;               // Direction
     EPwm2Regs.TBCTR = 0x0000;                     // Clear counter
 
@@ -417,15 +472,6 @@ void InitEPwm6Example()
     EPwm6Regs.TBCTL.bit.PHSDIR = 1;
     EPwm6Regs.TBCTR = 0x0000;                     // Clear counter
 
-    if(count<5){  //2 segundos
-        // Setup compare
-        EPwm6Regs.CMPA.bit.CMPA =5000 ;
-    }
-    else{
-        // Setup compare
-        EPwm6Regs.CMPA.bit.CMPA =2500 ;
-    }
-
     //
     // Setup TBCLK
     //
@@ -441,6 +487,8 @@ void InitEPwm6Example()
     EPwm6Regs.CMPCTL.bit.SHDWBMODE = CC_SHADOW;
     EPwm6Regs.CMPCTL.bit.LOADAMODE = CC_CTR_ZERO;
     EPwm6Regs.CMPCTL.bit.LOADBMODE = CC_CTR_ZERO;
+
+    //EPwm6Regs.CMPA.bit.CMPA =2500 ;
 
     //
     // Set actions
@@ -472,20 +520,9 @@ void InitEPwm6Example()
 void InitEPwm7Example()
 {
     EPwm7Regs.TBPRD = 5000;                 // Set timer period
+    EPwm7Regs.TBPHS.bit.TBPHS = 0;//10000/3
     EPwm7Regs.TBCTL.bit.PHSDIR = 0;
     EPwm7Regs.TBCTR = 0x0000;                     // Clear counter
-
-
-    if(count<5){  //2 segundos
-        // Setup compare
-        EPwm7Regs.CMPA.bit.CMPA =5000 ;
-        EPwm7Regs.TBPHS.bit.TBPHS = 0;           // Phase
-    }
-    else{
-        // Setup compare
-        EPwm7Regs.CMPA.bit.CMPA =2500 ;
-        EPwm7Regs.TBPHS.bit.TBPHS = 10000/3;           // Phase
-    }
 
     //
     // Setup TBCLK
@@ -502,6 +539,8 @@ void InitEPwm7Example()
     EPwm7Regs.CMPCTL.bit.SHDWBMODE = CC_SHADOW;
     EPwm7Regs.CMPCTL.bit.LOADAMODE = CC_CTR_ZERO;
     EPwm7Regs.CMPCTL.bit.LOADBMODE = CC_CTR_ZERO;
+
+    //EPwm7Regs.CMPA.bit.CMPA =2500 ;
 
     //
     // Set actions
@@ -532,20 +571,10 @@ void InitEPwm7Example()
 
 void InitEPwm8Example()
 {
-    EPwm8Regs.TBPRD = 5000;                 // Set timer period
+    EPwm8Regs.TBPRD = 5000;    // Set timer period
+    EPwm8Regs.TBPHS.bit.TBPHS = 0;//(2*10000)/3
     EPwm8Regs.TBCTL.bit.PHSDIR = 0;
     EPwm8Regs.TBCTR = 0x0000;                     // Clear counter
-
-    if(count<5){  //2 segundos
-        // Setup compare
-        EPwm8Regs.CMPA.bit.CMPA =5000 ;
-        EPwm8Regs.TBPHS.bit.TBPHS = 0;           // Phase
-    }
-    else{
-        // Setup compare
-        EPwm8Regs.CMPA.bit.CMPA =2500 ;
-        EPwm8Regs.TBPHS.bit.TBPHS = (2*10000)/3;           // Phase
-    }
 
     //
     // Setup TBCLK
@@ -562,6 +591,8 @@ void InitEPwm8Example()
     EPwm8Regs.CMPCTL.bit.SHDWBMODE = CC_SHADOW;
     EPwm8Regs.CMPCTL.bit.LOADAMODE = CC_CTR_ZERO;
     EPwm8Regs.CMPCTL.bit.LOADBMODE = CC_CTR_ZERO;
+
+    //EPwm8Regs.CMPA.bit.CMPA = 2500;
 
     //
     // Set actions
@@ -590,168 +621,6 @@ void InitEPwm8Example()
     EPwm8Regs.ETPS.bit.INTPRD = ET_1ST; //ET_3RD;          // Generate INT on 3rd event
 }
 
-/*
-//----------configurações do bootstrap------------------------------------------------------
-
-void BootstrapPwm6(){
-    EPwm6Regs.TBPRD = 5000;                 // Set timer period
-        EPwm6Regs.TBPHS.bit.TBPHS = 0;           // Phase
-        EPwm6Regs.TBCTL.bit.PHSDIR = 1;
-        EPwm6Regs.TBCTR = 0x0000;                     // Clear counter
-
-        //
-        // Setup TBCLK
-        //
-        EPwm6Regs.TBCTL.bit.CTRMODE = TB_COUNT_UPDOWN; // Count up
-        EPwm6Regs.TBCTL.bit.PHSEN = TB_ENABLE;        // Enable phase loading (Slave)
-        EPwm6Regs.TBCTL.bit.HSPCLKDIV = TB_DIV1; //TB_DIV4;       // Clock ratio to SYSCLKOUT
-        EPwm6Regs.TBCTL.bit.CLKDIV = TB_DIV1;    //TB_DIV4;
-
-        //adicionado agora
-        EPwm6Regs.TBCTL.bit.SYNCOSEL = TB_SYNC_IN;
-        EPwm6Regs.TBCTL.bit.PRDLD = TB_SHADOW;
-        EPwm6Regs.CMPCTL.bit.SHDWAMODE = CC_SHADOW;
-        EPwm6Regs.CMPCTL.bit.SHDWBMODE = CC_SHADOW;
-        EPwm6Regs.CMPCTL.bit.LOADAMODE = CC_CTR_ZERO;
-        EPwm6Regs.CMPCTL.bit.LOADBMODE = CC_CTR_ZERO;
-
-        // Setup compare
-        EPwm6Regs.CMPA.bit.CMPA =5000 ;
-
-        //
-        // Set actions
-        //
-        EPwm6Regs.AQCTLA.bit.CAU = AQ_SET;            // Set PWM1A on Zero
-        EPwm6Regs.AQCTLA.bit.CAD = AQ_CLEAR;
-
-        EPwm6Regs.AQCTLB.bit.CAU = AQ_CLEAR;          // Set PWM1A on Zero
-        EPwm6Regs.AQCTLB.bit.CAD = AQ_SET;
-
-        //
-        // Active Low PWMs - Setup Deadband
-        //
-        EPwm6Regs.DBCTL.bit.OUT_MODE = DB_FULL_ENABLE;
-        EPwm6Regs.DBCTL.bit.POLSEL = DB_ACTV_HIC;
-        EPwm6Regs.DBCTL.bit.IN_MODE = DBA_ALL;
-        EPwm6Regs.DBRED.bit.DBRED = 200; //EPWM6_MIN_DB;
-        EPwm6Regs.DBFED.bit.DBFED = 200; //EPWM6_MIN_DB;
-        //EPwm6_DB_Direction = DB_UP;
-
-        //
-        // Interrupt where we will change the Deadband
-        //
-        EPwm6Regs.ETSEL.bit.INTSEL = ET_CTR_ZERO;    // Select INT on Zero event
-        EPwm6Regs.ETSEL.bit.INTEN = 1;               // Enable INT
-        EPwm6Regs.ETPS.bit.INTPRD = ET_1ST; //ET_3RD;          // Generate INT on 3rd event
-    }
-
-
-void BootstrapPwm7(){
-    EPwm7Regs.TBPRD = 5000;                 // Set timer period
-        EPwm7Regs.TBPHS.bit.TBPHS = 0;           // Phase
-        EPwm7Regs.TBCTL.bit.PHSDIR = 0;
-        EPwm7Regs.TBCTR = 0x0000;                     // Clear counter
-
-        //
-        // Setup TBCLK
-        //
-        EPwm7Regs.TBCTL.bit.CTRMODE = TB_COUNT_UPDOWN; // Count up
-        EPwm7Regs.TBCTL.bit.PHSEN = TB_ENABLE;        // Enable phase loading (Slave)
-        EPwm7Regs.TBCTL.bit.HSPCLKDIV = TB_DIV1; //TB_DIV4;       // Clock ratio to SYSCLKOUT
-        EPwm7Regs.TBCTL.bit.CLKDIV = TB_DIV1;    //TB_DIV4;
-
-        //adicionado agora
-        EPwm7Regs.TBCTL.bit.SYNCOSEL = TB_SYNC_IN;//TB_CTR_ZERO;
-        EPwm7Regs.TBCTL.bit.PRDLD = TB_SHADOW;
-        EPwm7Regs.CMPCTL.bit.SHDWAMODE = CC_SHADOW;
-        EPwm7Regs.CMPCTL.bit.SHDWBMODE = CC_SHADOW;
-        EPwm7Regs.CMPCTL.bit.LOADAMODE = CC_CTR_ZERO;
-        EPwm7Regs.CMPCTL.bit.LOADBMODE = CC_CTR_ZERO;
-
-        // Setup compare
-        EPwm7Regs.CMPA.bit.CMPA = 5000;
-
-        //
-        // Set actions
-        //
-        EPwm7Regs.AQCTLA.bit.CAU = AQ_SET;            // Set PWM1A on Zero
-        EPwm7Regs.AQCTLA.bit.CAD = AQ_CLEAR;
-
-        EPwm7Regs.AQCTLB.bit.CAU = AQ_CLEAR;          // Set PWM1A on Zero
-        EPwm7Regs.AQCTLB.bit.CAD = AQ_SET;
-
-        //
-        // Active Low PWMs - Setup Deadband
-        //
-        EPwm7Regs.DBCTL.bit.OUT_MODE = DB_FULL_ENABLE;
-        EPwm7Regs.DBCTL.bit.POLSEL = DB_ACTV_HIC;
-        EPwm7Regs.DBCTL.bit.IN_MODE = DBA_ALL;
-        EPwm7Regs.DBRED.bit.DBRED = 200; //EPWM6_MIN_DB;
-        EPwm7Regs.DBFED.bit.DBFED = 200; //EPWM6_MIN_DB;
-        //EPwm6_DB_Direction = DB_UP;
-
-        //
-        // Interrupt where we will change the Deadband
-        //
-        EPwm7Regs.ETSEL.bit.INTSEL = ET_CTR_ZERO;    // Select INT on Zero event
-        EPwm7Regs.ETSEL.bit.INTEN = 1;               // Enable INT
-        EPwm7Regs.ETPS.bit.INTPRD = ET_1ST; //ET_3RD;          // Generate INT on 3rd event
-
-}
-
-void BootstrapPwm8(){
-    EPwm8Regs.TBPRD = 5000;                // Set timer period
-    EPwm8Regs.TBPHS.bit.TBPHS = 0;           // Phase
-    EPwm8Regs.TBCTL.bit.PHSDIR = 0;
-    EPwm8Regs.TBCTR = 0x0000;                     // Clear counter
-
-    //
-    // Setup TBCLK
-    //
-    EPwm8Regs.TBCTL.bit.CTRMODE = TB_COUNT_UPDOWN; // Count up
-    EPwm8Regs.TBCTL.bit.PHSEN = TB_ENABLE;        // Enable phase loading (Slave)
-    EPwm8Regs.TBCTL.bit.HSPCLKDIV = TB_DIV1; //TB_DIV4;       // Clock ratio to SYSCLKOUT
-    EPwm8Regs.TBCTL.bit.CLKDIV = TB_DIV1;    //TB_DIV4;
-
-    //adicionado agora
-    EPwm8Regs.TBCTL.bit.SYNCOSEL = TB_SYNC_IN;
-    EPwm8Regs.TBCTL.bit.PRDLD = TB_SHADOW;
-    EPwm8Regs.CMPCTL.bit.SHDWAMODE = CC_SHADOW;
-    EPwm8Regs.CMPCTL.bit.SHDWBMODE = CC_SHADOW;
-    EPwm8Regs.CMPCTL.bit.LOADAMODE = CC_CTR_ZERO;
-    EPwm8Regs.CMPCTL.bit.LOADBMODE = CC_CTR_ZERO;
-
-    // Setup compare
-    EPwm8Regs.CMPA.bit.CMPA = 5000;
-
-    //
-    // Set actions
-    //
-    EPwm8Regs.AQCTLA.bit.CAU = AQ_SET;            // Set PWM1A on Zero
-    EPwm8Regs.AQCTLA.bit.CAD = AQ_CLEAR;
-
-    EPwm8Regs.AQCTLB.bit.CAU = AQ_CLEAR;          // Set PWM1A on Zero
-    EPwm8Regs.AQCTLB.bit.CAD = AQ_SET;
-
-    //
-    // Active Low PWMs - Setup Deadband
-    //
-    EPwm8Regs.DBCTL.bit.OUT_MODE = DB_FULL_ENABLE;
-    EPwm8Regs.DBCTL.bit.POLSEL = DB_ACTV_HIC;
-    EPwm8Regs.DBCTL.bit.IN_MODE = DBA_ALL;
-    EPwm8Regs.DBRED.bit.DBRED = 200; //EPWM6_MIN_DB;
-    EPwm8Regs.DBFED.bit.DBFED = 200; //EPWM6_MIN_DB;
-    //EPwm6_DB_Direction = DB_UP;
-
-    //
-    // Interrupt where we will change the Deadband
-    //
-    EPwm8Regs.ETSEL.bit.INTSEL = ET_CTR_ZERO;    // Select INT on Zero event
-    EPwm8Regs.ETSEL.bit.INTEN = 1;               // Enable INT
-    EPwm8Regs.ETPS.bit.INTPRD = ET_1ST; //ET_3RD;          // Generate INT on 3rd event
-
-
-}
 
 /*
 void InitEPwmGpio_DB(void)
