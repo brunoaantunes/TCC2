@@ -23,6 +23,10 @@ ORDERED_OBJS += \
 "./F2837xS_SysCtrl.obj" \
 "./F2837xS_usDelay.obj" \
 "./epwm_Bootstrap.obj" \
+"./Source/stage0.obj" \
+"./Source/stage1.obj" \
+"./Source/stage2.obj" \
+"./Source/stage3.obj" \
 $(GEN_CMDS__FLAG) \
 -lrts2800_fpu32.lib \
 -l2837xS_Generic_FLASH_lnk.cmd \
@@ -37,7 +41,9 @@ RMDIR := RMDIR /S/Q
 # All of the sources participating in the build are defined here
 -include sources.mk
 -include subdir_vars.mk
+-include Source/subdir_vars.mk
 -include subdir_rules.mk
+-include Source/subdir_rules.mk
 -include objects.mk
 
 ifneq ($(MAKECMDGOALS),clean)
@@ -154,8 +160,8 @@ epwm_deadband_cpu01.out: $(OBJS) $(GEN_CMDS)
 # Other Targets
 clean:
 	-$(RM) $(EXE_OUTPUTS__QUOTED)
-	-$(RM) "ADC.obj" "F2837xS_Adc.obj" "F2837xS_CodeStartBranch.obj" "F2837xS_CpuTimers.obj" "F2837xS_DefaultISR.obj" "F2837xS_EPwm.obj" "F2837xS_GlobalVariableDefs.obj" "F2837xS_Gpio.obj" "F2837xS_PieCtrl.obj" "F2837xS_PieVect.obj" "F2837xS_SysCtrl.obj" "F2837xS_usDelay.obj" "epwm_Bootstrap.obj" 
-	-$(RM) "ADC.d" "F2837xS_Adc.d" "F2837xS_CpuTimers.d" "F2837xS_DefaultISR.d" "F2837xS_EPwm.d" "F2837xS_GlobalVariableDefs.d" "F2837xS_Gpio.d" "F2837xS_PieCtrl.d" "F2837xS_PieVect.d" "F2837xS_SysCtrl.d" "epwm_Bootstrap.d" 
+	-$(RM) "ADC.obj" "F2837xS_Adc.obj" "F2837xS_CodeStartBranch.obj" "F2837xS_CpuTimers.obj" "F2837xS_DefaultISR.obj" "F2837xS_EPwm.obj" "F2837xS_GlobalVariableDefs.obj" "F2837xS_Gpio.obj" "F2837xS_PieCtrl.obj" "F2837xS_PieVect.obj" "F2837xS_SysCtrl.obj" "F2837xS_usDelay.obj" "epwm_Bootstrap.obj" "Source\stage0.obj" "Source\stage1.obj" "Source\stage2.obj" "Source\stage3.obj" 
+	-$(RM) "ADC.d" "F2837xS_Adc.d" "F2837xS_CpuTimers.d" "F2837xS_DefaultISR.d" "F2837xS_EPwm.d" "F2837xS_GlobalVariableDefs.d" "F2837xS_Gpio.d" "F2837xS_PieCtrl.d" "F2837xS_PieVect.d" "F2837xS_SysCtrl.d" "epwm_Bootstrap.d" "Source\stage0.d" "Source\stage1.d" "Source\stage2.d" "Source\stage3.d" 
 	-$(RM) "F2837xS_CodeStartBranch.d" "F2837xS_usDelay.d" 
 	-@echo 'Finished clean'
 	-@echo ' '

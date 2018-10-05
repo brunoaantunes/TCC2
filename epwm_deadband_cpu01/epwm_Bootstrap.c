@@ -46,11 +46,15 @@
 // Included Files
 //
 #include "F28x_Project.h"
-
+#include <stdint.h>
+#include "defines.h"
+#include "structs.h"
+#include "math.h"
+#include "epwm.h"
 //RET_VARS ret1 = RET_DEFAULTS;
 //
 // Defines
-
+/*
 #define EPWM6_MAX_DB   0x03FF
 #define EPWM7_MAX_DB   0x03FF
 #define EPWM8_MAX_DB   0x03FF
@@ -73,7 +77,7 @@ Uint16 EPwm2_DB_Direction;
 Uint16 EPwm6_DB_Direction;
 Uint16 EPwm7_DB_Direction;
 Uint16 EPwm8_DB_Direction;
-
+*/
 //
 // Function Prototypes
 //
@@ -96,6 +100,21 @@ void contador(void);
 //void BootstrapPwm6(void);
 //void BootstrapPwm7(void);
 //void BootstrapPwm8(void);
+
+void initvars(void);
+extern void stage0(void); // Verificação inicial
+extern void stage1(void);
+extern void stage2(void);
+extern void stage3(void);
+
+void sincosf(float x, float *sinx, float *cosx);
+void MODULATION(struct RETIFICADOR *conv);
+
+struct RETIFICADOR conv;
+struct CONTROLE ctrl;
+struct TRIGONOMETRICO trig;
+struct PLL pll;
+struct PI Cvz,CizID,CizIQ;
 
 Uint16 count = 0;
 
@@ -179,11 +198,10 @@ void main(void)
 
     EDIS;   // This is needed to disable write to EALLOW protected registers
  //-------------------------------
-   // if(count<5){
     InitCpuTimers();
-    ConfigCpuTimer(&CpuTimer0, 60, 500000);
-    CpuTimer0Regs.TCR.all = 0x4001;
-    //}
+    ConfigCpuTimer(&CpuTimer0, 200, 50);
+    CpuTimer0Regs.TCR.all = 0x4000;
+
  //
  // Step 5. User specific code, enable __interrupts:
  // Configure GPIO34 as a GPIO output pin
@@ -238,6 +256,8 @@ void main(void)
         //Setup the ADCs for software conversions
          SetupADCSoftware();
 
+         initvars(); // Inicializa variáveis
+
         for(;;);
 
 
@@ -249,9 +269,7 @@ __interrupt void cpu_timer0_isr(void)
    CpuTimer0.InterruptCount++;
    GpioDataRegs.GPATOGGLE.bit.GPIO12 = 1; // LED D9
    GpioDataRegs.GPATOGGLE.bit.GPIO13 = 1; // LED D10
-
-  //contador();
-
+/*
    //convert, wait for completion, and store results
    //start conversions immediately via software, ADCA
    //
@@ -273,27 +291,74 @@ __interrupt void cpu_timer0_isr(void)
    //
    while(AdcbRegs.ADCINTFLG.bit.ADCINT1 == 0);
    AdcbRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;
-
+*/
    count++;
 
-   if(count<50){
-       EPwm6Regs.CMPA.bit.CMPA = 5000;
-       EPwm7Regs.CMPA.bit.CMPA = 5000;
-       EPwm8Regs.CMPA.bit.CMPA = 5000;
+   if(count<20){
+       EPwm6Regs.CMPA.bit.CMPA = epwm_duty*2;
+       EPwm7Regs.CMPA.bit.CMPA = epwm_duty*2;
+       EPwm8Regs.CMPA.bit.CMPA = epwm_duty*2;
    }
-   else
+  /* else
    {
        EPwm6Regs.CMPA.bit.CMPA = 2500;
        EPwm7Regs.CMPA.bit.CMPA = 2500;
        EPwm8Regs.CMPA.bit.CMPA = 2500;
    }
+*/
+       //  ADCA0 -> ia
+       //  ADCB0 -> ic
+       //  ADCA1 -> vab
+       //  ADCB1 -> vcb
+       //  ADCA2 -> vccP
+       //  ADCB2 -> vccN
+   if(count>20){
+     /*  //store results
+       conv.ADCA0 = AdcaResultRegs.ADCRESULT0;
+       conv.ADCA1 = AdcaResultRegs.ADCRESULT1;
+       conv.ADCA2 = AdcaResultRegs.ADCRESULT2; // Precisa ser configurado
+
+       conv.ADCB0 = AdcbResultRegs.ADCRESULT0;
+       conv.ADCB1 = AdcbResultRegs.ADCRESULT1;
+       conv.ADCB2 = AdcbResultRegs.ADCRESULT2; // Precisa ser configurado
+*/
+       // Maquina de estados
+       switch(ctrl.STATE){
+       case 0: // Estagio 0 - Verificação e teste iniciais
+               stage0();
+       break;
+       case 1: // Estagio 1 - Retificador
+               stage1();
+       break;
+       case 2: // Estagio 2 - Inversor - testes inicias
+               stage2();
+       break;
+       case 3: // Estagio 3 - Erro, Proteção ou desligamento
+       default:
+               stage3();
+               ctrl.ENABLE = 0;
+       break;
+       }
 
 
+       MODULATION(&conv);
+
+       if((conv.da+conv.d0)<0)conv.da=0;
+       if((conv.db+conv.d0)<0)conv.db=0;
+       if((conv.dc+conv.d0)<0)conv.dc=0;
+
+       //-------------------------------------------------------//
+       // Atualização das razões cíclicas - Conversor
+       //-------------------------------------------------------//
+
+       EPwm6Regs.CMPA.bit.CMPA=(unsigned int) ((conv.da+conv.d0)*5000);
+       EPwm7Regs.CMPA.bit.CMPA=(unsigned int) ((conv.db+conv.d0)*5000);
+       EPwm8Regs.CMPA.bit.CMPA=(unsigned int) ((conv.dc+conv.d0)*5000);
+       }
+//
+// Acknowledge this __interrupt to receive more __interrupts from group 1
+//
    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
-}
-
-void contador(void){
-    count++;
 }
 
 // epwm1_isr - EPWM1 ISR
@@ -360,7 +425,7 @@ void InitEPwm1Example()
     EPwm1Regs.ETSEL.bit.SOCASEL = 1;        // Select SOC from from CPMA on upcount
     EPwm1Regs.ETPS.bit.SOCAPRD  = 1;        // Generate pulse on 1st event
 
-    EPwm1Regs.TBPRD = 5000;//81                 // Set timer period
+    EPwm1Regs.TBPRD = epwm_timer;//81                 // Set timer period
     EPwm1Regs.TBPHS.bit.TBPHS = 0;           // Phase is 0
     EPwm1Regs.TBCTR = 0x0000;                     // Clear counter
 
@@ -381,7 +446,7 @@ void InitEPwm1Example()
     EPwm1Regs.CMPCTL.bit.LOADBMODE = CC_CTR_ZERO;
 
     // Setup compare
-    EPwm1Regs.CMPA.bit.CMPA = 2500;
+    EPwm1Regs.CMPA.bit.CMPA = epwm_duty;
 
     //
     // Set actions
@@ -412,7 +477,7 @@ void InitEPwm1Example()
 
 void InitEPwm2Example()
 {
-    EPwm2Regs.TBPRD = 5000;                // Set timer period
+    EPwm2Regs.TBPRD = epwm_timer;                // Set timer period
     EPwm2Regs.TBPHS.bit.TBPHS = 0;           // Phase
     EPwm2Regs.TBCTL.bit.PHSDIR = 0;               // Direction
     EPwm2Regs.TBCTR = 0x0000;                     // Clear counter
@@ -434,7 +499,7 @@ void InitEPwm2Example()
     EPwm2Regs.CMPCTL.bit.LOADBMODE = CC_CTR_ZERO;
 
     // Setup compare
-    EPwm2Regs.CMPA.bit.CMPA = 2500;
+    EPwm2Regs.CMPA.bit.CMPA = epwm_duty;
 
     //
     // Set actions
@@ -467,7 +532,7 @@ void InitEPwm6Example()
 {
 
 
-    EPwm6Regs.TBPRD = 5000;                 // Set timer period
+    EPwm6Regs.TBPRD = epwm_timer;                 // Set timer period
     EPwm6Regs.TBPHS.bit.TBPHS = 0;           // Phase
     EPwm6Regs.TBCTL.bit.PHSDIR = 1;
     EPwm6Regs.TBCTR = 0x0000;                     // Clear counter
@@ -519,7 +584,7 @@ void InitEPwm6Example()
 
 void InitEPwm7Example()
 {
-    EPwm7Regs.TBPRD = 5000;                 // Set timer period
+    EPwm7Regs.TBPRD = epwm_timer;                 // Set timer period
     EPwm7Regs.TBPHS.bit.TBPHS = 0;//10000/3
     EPwm7Regs.TBCTL.bit.PHSDIR = 0;
     EPwm7Regs.TBCTR = 0x0000;                     // Clear counter
@@ -571,7 +636,7 @@ void InitEPwm7Example()
 
 void InitEPwm8Example()
 {
-    EPwm8Regs.TBPRD = 5000;    // Set timer period
+    EPwm8Regs.TBPRD = epwm_timer;    // Set timer period
     EPwm8Regs.TBPHS.bit.TBPHS = 0;//(2*10000)/3
     EPwm8Regs.TBCTL.bit.PHSDIR = 0;
     EPwm8Regs.TBCTR = 0x0000;                     // Clear counter
@@ -622,6 +687,54 @@ void InitEPwm8Example()
 }
 
 
+
+void MODULATION(struct RETIFICADOR *conv)
+{
+    float min, max;
+
+     if((conv->da > conv->db) && (conv->da > conv->dc) ) max=conv->da;
+else if((conv->db > conv->da) && (conv->db > conv->dc) ) max=conv->db;
+else  max=conv->dc;
+
+     if((conv->da < conv->db) && (conv->da < conv->dc) ) min=conv->da;
+else if((conv->db < conv->da) && (conv->db < conv->dc) ) min=conv->db;
+else  min=conv->dc;
+
+    conv->d0=(-0.5*(max+min-1.0));
+
+    return;
+}
+
+void initvars(void){
+   Cvz.e0 = 0;  // Erro atual
+   Cvz.u0= 0; // Calcula saída atual
+   Cvz.u1= 0; // Atualiza saída anterior
+   Cvz.e1= 0; // Atualiza erro anterior
+
+   CizID.e0 = 0;  // Erro atual
+   CizID.u0=0; // Calcula saída atual
+   CizID.u1=0; // Atualiza saída anterior
+   CizID.e1=0; // Atualiza erro anterior
+
+   CizIQ.e0 =0;  // Erro atual
+   CizIQ.u0= 0; // Calcula saída atual
+   CizIQ.u1=0; // Atualiza saída anterior
+   CizIQ.e1=0; // Atualiza erro anterior
+
+   ctrl.STATE =0;
+   ctrl.ENABLE = 0;
+    return;
+}
+
+
+// Retorna seno e cosseno de x
+void sincosf(float x, float *sinx, float *cosx)
+{
+
+*sinx=sin(x);
+*cosx=cos(x);
+  return;
+}
 /*
 void InitEPwmGpio_DB(void)
 {
