@@ -92,10 +92,11 @@ __interrupt void epwm6_isr(void);
 __interrupt void epwm7_isr(void);
 __interrupt void epwm8_isr(void);
 __interrupt void cpu_timer0_isr(void);
+__interrupt void cpu_timer1_isr(void);
 
 
-void ConfigureADC(void);
-void SetupADCSoftware(void);
+extern void ConfigureADC(void);
+extern void SetupADCSoftware(void);
 void contador(void);
 //void BootstrapPwm6(void);
 //void BootstrapPwm7(void);
@@ -195,12 +196,15 @@ void main(void)
     PieVectTable.EPWM7_INT = &epwm7_isr;
     PieVectTable.EPWM8_INT = &epwm8_isr;
     PieVectTable.TIMER0_INT = &cpu_timer0_isr;
+    PieVectTable.TIMER1_INT = &cpu_timer1_isr;
 
     EDIS;   // This is needed to disable write to EALLOW protected registers
  //-------------------------------
     InitCpuTimers();
     ConfigCpuTimer(&CpuTimer0, 200, 50);
+    ConfigCpuTimer(&CpuTimer1, 200, 50000);
     CpuTimer0Regs.TCR.all = 0x4000;
+    CpuTimer1Regs.TCR.all = 0x4000;
 
  //
  // Step 5. User specific code, enable __interrupts:
@@ -230,15 +234,10 @@ void main(void)
     CpuSysRegs.PCLKCR0.bit.TBCLKSYNC =1;
     EDIS;
 
-
-/*
-    EALLOW;
-    ClkCfgRegs.PERCLKDIVSEL.bit.EPWMCLKDIV  = 0x0001; //ADICIONADO
-    EDIS;
-*/
         IER |= M_INT1;
         IER |= M_INT6;
         IER |= M_INT7;
+        IER |= M_INT13;
 
         PieCtrlRegs.PIEIER1.bit.INTx7 = 1;
         PieCtrlRegs.PIEIER2.bit.INTx1 = 1;
@@ -269,29 +268,7 @@ __interrupt void cpu_timer0_isr(void)
    CpuTimer0.InterruptCount++;
    GpioDataRegs.GPATOGGLE.bit.GPIO12 = 1; // LED D9
    GpioDataRegs.GPATOGGLE.bit.GPIO13 = 1; // LED D10
-/*
-   //convert, wait for completion, and store results
-   //start conversions immediately via software, ADCA
-   //
-   AdcaRegs.ADCSOCFRC1.all = 0x0007; //SOC0, SOC1 and SOC2
 
-   //
-   //start conversions immediately via software, ADCB
-   //
-   AdcbRegs.ADCSOCFRC1.all = 0x0007; //SOC0, SOC1 and SOC2
-
-   //
-   //wait for ADCA to complete, then acknowledge flag
-   //
-   while(AdcaRegs.ADCINTFLG.bit.ADCINT1 == 0);
-   AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;
-
-   //
-   //wait for ADCB to complete, then acknowledge flag
-   //
-   while(AdcbRegs.ADCINTFLG.bit.ADCINT1 == 0);
-   AdcbRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;
-*/
    count++;
 
    if(count<20){
@@ -299,29 +276,10 @@ __interrupt void cpu_timer0_isr(void)
        EPwm7Regs.CMPA.bit.CMPA = epwm_duty*2;
        EPwm8Regs.CMPA.bit.CMPA = epwm_duty*2;
    }
-  /* else
-   {
-       EPwm6Regs.CMPA.bit.CMPA = 2500;
-       EPwm7Regs.CMPA.bit.CMPA = 2500;
-       EPwm8Regs.CMPA.bit.CMPA = 2500;
-   }
-*/
-       //  ADCA0 -> ia
-       //  ADCB0 -> ic
-       //  ADCA1 -> vab
-       //  ADCB1 -> vcb
-       //  ADCA2 -> vccP
-       //  ADCB2 -> vccN
-   if(count>20){
-     /*  //store results
-       conv.ADCA0 = AdcaResultRegs.ADCRESULT0;
-       conv.ADCA1 = AdcaResultRegs.ADCRESULT1;
-       conv.ADCA2 = AdcaResultRegs.ADCRESULT2; // Precisa ser configurado
 
-       conv.ADCB0 = AdcbResultRegs.ADCRESULT0;
-       conv.ADCB1 = AdcbResultRegs.ADCRESULT1;
-       conv.ADCB2 = AdcbResultRegs.ADCRESULT2; // Precisa ser configurado
-*/
+
+   if(count>20){
+
        // Maquina de estados
        switch(ctrl.STATE){
        case 0: // Estagio 0 - Verificação e teste iniciais
@@ -359,6 +317,67 @@ __interrupt void cpu_timer0_isr(void)
 // Acknowledge this __interrupt to receive more __interrupts from group 1
 //
    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}
+
+__interrupt void cpu_timer1_isr(void)
+{
+
+    CpuTimer1.InterruptCount++;
+   //convert, wait for completion, and store results
+   //start conversions immediately via software, ADCA
+   //
+   AdcaRegs.ADCSOCFRC1.all = 0x0007; //SOC0, SOC1 and SOC2
+
+   //
+   //start conversions immediately via software, ADCB
+   //
+   AdcbRegs.ADCSOCFRC1.all = 0x0007; //SOC0, SOC1 and SOC2
+
+   //
+   //wait for ADCA to complete, then acknowledge flag
+   //
+   while(AdcaRegs.ADCINTFLG.bit.ADCINT1 == 0);
+   AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;
+
+   //
+   //wait for ADCB to complete, then acknowledge flag
+   //
+   while(AdcbRegs.ADCINTFLG.bit.ADCINT1 == 0);
+   AdcbRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;
+
+       //  ADCA0 -> ia
+       //  ADCB0 -> ic
+       //  ADCA1 -> vab
+       //  ADCB1 -> vcb
+       //  ADCA2 -> vccP
+       //  ADCB2 -> vccN
+
+      //store results
+       conv.ADCA0 = AdcaResultRegs.ADCRESULT0;
+       conv.ADCA1 = AdcaResultRegs.ADCRESULT1;
+       conv.ADCA2 = AdcaResultRegs.ADCRESULT2;
+
+       conv.ADCB0 = AdcbResultRegs.ADCRESULT0;
+       conv.ADCB1 = AdcbResultRegs.ADCRESULT1;
+       conv.ADCB2 = AdcbResultRegs.ADCRESULT2;
+
+       // Maquina de estados
+       switch(ctrl.STATE){
+       case 0: // Estagio 0 - Verificação e teste iniciais
+               stage0();
+       break;
+       case 1: // Estagio 1 - Retificador
+               stage1();
+       break;
+       case 2: // Estagio 2 - Inversor - testes inicias
+               stage2();
+       break;
+       case 3: // Estagio 3 - Erro, Proteção ou desligamento
+       default:
+               stage3();
+               ctrl.ENABLE = 0;
+       break;
+       }
 }
 
 // epwm1_isr - EPWM1 ISR

@@ -72,26 +72,26 @@ void SetupADCSoftware(void)
     //ADCA
     //
     EALLOW;
-    AdcaRegs.ADCSOC0CTL.bit.CHSEL = 2;  //SOC0 will convert pin A2
+    AdcaRegs.ADCSOC0CTL.bit.CHSEL = 0;  //SOC0 will convert pin A2
     AdcaRegs.ADCSOC0CTL.bit.ACQPS = acqps; //sample window is acqps +
                                            //1 SYSCLK cycles
-    AdcaRegs.ADCSOC1CTL.bit.CHSEL = 3;  //SOC1 will convert pin A3
+    AdcaRegs.ADCSOC1CTL.bit.CHSEL = 1;  //SOC1 will convert pin A3
     AdcaRegs.ADCSOC1CTL.bit.ACQPS = acqps; //sample window is acqps +
                                            //1 SYSCLK cycles
-    AdcaRegs.ADCSOC2CTL.bit.CHSEL = 4;  //SOC1 will convert pin A?
+    AdcaRegs.ADCSOC2CTL.bit.CHSEL = 2;  //SOC1 will convert pin A?
     AdcaRegs.ADCSOC2CTL.bit.ACQPS = acqps; //sample window is acqps +
                                            //1 SYSCLK cycles
     AdcaRegs.ADCINTSEL1N2.bit.INT1SEL = 1; //end of SOC1 will set INT1 flag
     AdcaRegs.ADCINTSEL1N2.bit.INT1E = 1;   //enable INT1 flag
     AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; //make sure INT1 flag is cleared
     //ADCB
-    AdcbRegs.ADCSOC0CTL.bit.CHSEL = 2;  //SOC0 will convert pin B2
+    AdcbRegs.ADCSOC0CTL.bit.CHSEL = 0;  //SOC0 will convert pin B2
     AdcbRegs.ADCSOC0CTL.bit.ACQPS = acqps; //sample window is acqps +
                                            //1 SYSCLK cycles
-    AdcbRegs.ADCSOC1CTL.bit.CHSEL = 3;  //SOC1 will convert pin B3
+    AdcbRegs.ADCSOC1CTL.bit.CHSEL = 1;  //SOC1 will convert pin B3
     AdcbRegs.ADCSOC1CTL.bit.ACQPS = acqps; //sample window is acqps +
                                            //1 SYSCLK cycles
-    AdcbRegs.ADCSOC2CTL.bit.CHSEL = 4;  //SOC1 will convert pin B?
+    AdcbRegs.ADCSOC2CTL.bit.CHSEL = 2;  //SOC1 will convert pin B?
     AdcbRegs.ADCSOC2CTL.bit.ACQPS = acqps; //sample window is acqps +
                                            //1 SYSCLK cycles
     AdcbRegs.ADCINTSEL1N2.bit.INT1SEL = 1; //end of SOC1 will set INT1 flag
